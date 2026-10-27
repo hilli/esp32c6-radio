@@ -2,7 +2,7 @@ GO ?= go
 TINYGO ?= tinygo
 TARGET = ./targets/esp32c6-radio.json
 
-.PHONY: check lint build test firmware thread-link consumer
+.PHONY: check lint build test firmware thread-link consumer probes
 
 check:
 	$(MAKE) lint
@@ -10,6 +10,7 @@ check:
 	$(MAKE) test
 	$(MAKE) firmware
 	$(MAKE) thread-link
+	$(MAKE) probes
 
 lint:
 	@files="$$(gofmt -l $$(git ls-files --cached --others --exclude-standard '*.go'))"; \
@@ -42,3 +43,9 @@ thread-link:
 
 consumer:
 	$(GO) run ./tools/check-consumer
+	$(GO) run ./tools/check-consumer -example=storage
+
+probes:
+	@set -eu; for probe in storage entropy rf-validation thread-validation; do \
+		$(GO) run ./tools/lab build -probe $$probe -out build/lab/$$probe; \
+	done

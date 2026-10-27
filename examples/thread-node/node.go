@@ -14,7 +14,7 @@ import (
 	"github.com/hilli/gothread/thread/mle"
 )
 
-var ErrDurableSettingsRequired = errors.New("thread-node: verified durable Settings required; TinyGo 0.42 has no C6 Flash driver")
+var ErrDurableSettingsRequired = errors.New("thread-node: physically qualified durable Settings are required")
 var ErrIncompleteDataset = errors.New("thread-node: a complete preconfigured active dataset is required")
 var ErrIdentityMismatch = errors.New("thread-node: Instance and radio factory identities disagree")
 
@@ -33,6 +33,19 @@ func Run(settings platform.Settings, dataset *meshcop.Info, stop <-chan struct{}
 	driver, err := esp32c6radio.New()
 	if err != nil {
 		return err
+	}
+	return RunWithDriver(driver, settings, dataset, stop, nil)
+}
+
+// RunWithDriver shares the same radio with its C6 Settings backend. onStarted
+// is called outside the event loop; it may schedule observations with PostTask.
+// It is lab wiring, not a way to certify storage/entropy by setting a boolean.
+func RunWithDriver(driver *esp32c6radio.Radio, settings platform.Settings, dataset *meshcop.Info, stop <-chan struct{}, onStarted func(*instance.Instance)) (result error) {
+	if settings == nil {
+		return ErrDurableSettingsRequired
+	}
+	if driver == nil {
+		return esp32c6radio.ErrInvalidArgument
 	}
 	var inst *instance.Instance
 	running := false
@@ -92,6 +105,9 @@ func Run(settings platform.Settings, dataset *meshcop.Info, stop <-chan struct{}
 	})
 	if err := <-started; err != nil {
 		return err
+	}
+	if onStarted != nil {
+		onStarted(inst)
 	}
 	<-stop
 	stopped := make(chan error, 1)

@@ -7,7 +7,8 @@
 MEMORY
 {
     SRAM (rwx) : ORIGIN = 0x40800000, LENGTH = 0x6e610
-    FLASH (rx) : ORIGIN = 0x42000000, LENGTH = 4M
+    FLASH (rx) : ORIGIN = 0x42000000, LENGTH = 0x3f8000
+    SETTINGS (r) : ORIGIN = 0x423f8000, LENGTH = 0x8000
 }
 
 ENTRY(call_start_cpu0)
@@ -87,6 +88,10 @@ SECTIONS
 _globals_start = _sbss;
 _globals_end = _edata;
 _stack_size = 16K;
+__settings_start = ORIGIN(SETTINGS);
+__settings_end = ORIGIN(SETTINGS) + LENGTH(SETTINGS);
+__settings_phys_start = 0x3f8000;
+__settings_phys_end = 0x400000;
 
 ASSERT(ADDR(.text) == ORIGIN(FLASH) + 0x18 +
        ((SIZEOF(.data) > 0) ? (SIZEOF(.data) + 8) : 0) +
@@ -101,3 +106,14 @@ Cache_Suspend_ICache = 0x40000698;
 Cache_Resume_ICache = 0x4000069c;
 Cache_MMU_Init = 0x400006b4;
 Cache_MSPI_MMU_Set = 0x400006b8;
+
+/* C6-only flash bridge ROM bindings. Keep these out of C inline assembly:
+ * resolving absolute calls there can misassemble AUIPC/JALR PC-relative pairs.
+ */
+PROVIDE(c6_rom_unlock = 0x40000154);
+PROVIDE(c6_rom_write = 0x4000014c);
+PROVIDE(c6_rom_erase = 0x40000144);
+PROVIDE(c6_rom_wait = 0x40000110);
+PROVIDE(c6_cache_suspend = 0x40000698);
+PROVIDE(c6_cache_resume = 0x4000069c);
+PROVIDE(c6_cache_invalidate = 0x4000064c);

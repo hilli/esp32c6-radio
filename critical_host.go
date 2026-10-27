@@ -23,8 +23,10 @@ func writeMAC(offset uintptr, value uint32) {
 		simulatedMAC[offset/4] = value
 	}
 }
-func dmaFence()                         {}
-func readFactoryMAC() (uint32, uint32)  { return 0, 0 }
-func (h *c6Device) enable(*Radio) error { return ErrUnsupported }
-func (h *c6Device) disable() error      { return ErrUnsupported }
-func (d *Radio) Fill([]byte) error      { return ErrUnsupported }
+func dmaFence()                                   {}
+func readFactoryMAC() (uint32, uint32)            { return 0, 0 }
+func (h *c6Device) enable(*Radio) error           { return ErrUnsupported }
+func (h *c6Device) disable() error                { return ErrUnsupported }
+func (d *Radio) Fill([]byte) error                { return ErrUnsupported }
+func flashDeviceAvailable(*Radio) bool            { return true }
+func (d *Radio) EntropyState() EntropySourceState { return EntropySourceState{} }

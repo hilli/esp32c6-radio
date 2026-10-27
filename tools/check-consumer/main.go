@@ -19,19 +19,23 @@ const module = "github.com/hilli/esp32c6-radio"
 
 func main() {
 	version := flag.String("version", "", "published commit/version to download; default tests the local module")
+	example := flag.String("example", "raw-radio", "raw-radio or storage")
 	flag.Parse()
-	if err := check(*version); err != nil {
+	if err := check(*version, *example); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func check(version string) (result error) {
+func check(version, example string) (result error) {
+	if example != "raw-radio" && example != "storage" {
+		return fmt.Errorf("unsupported consumer fixture")
+	}
 	root, err := os.Getwd()
 	if err != nil {
 		return err
 	}
-	source, err := os.ReadFile("examples/raw-radio/main.go")
+	source, err := os.ReadFile("examples/" + example + "/main.go")
 	if err != nil {
 		return err
 	}
@@ -97,7 +101,12 @@ func check(version string) (result error) {
 	fmt.Print(provenance)
 	build := func(name string) error {
 		for _, suffix := range []string{".elf", ".bin"} {
-			if _, err := run(work, "tinygo", "build", "-target", "target.json", "-o", name+suffix, "."); err != nil {
+			args := []string{"tinygo", "build", "-target", "target.json"}
+			if example == "storage" {
+				args = append(args, "-ldflags", "-X main.firmwareID=consumer-check")
+			}
+			args = append(args, "-o", name+suffix, ".")
+			if _, err := run(work, args...); err != nil {
 				return err
 			}
 		}

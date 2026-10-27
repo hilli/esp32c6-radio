@@ -27,6 +27,7 @@ func (h *fakeDevice) enable(*Radio) error           { h.calls++; return h.initEr
 func (h *fakeDevice) disable() error                { return h.shutdownError }
 func (h *fakeDevice) stop()                         {}
 func (h *fakeDevice) busy() bool                    { return h.blocked }
+func (h *fakeDevice) idle() bool                    { return !h.blocked }
 func (h *fakeDevice) receive(uint8, *configuration) { h.calls++ }
 func (h *fakeDevice) transmit(words *[33]uint32, channel uint8, cfg *configuration, cca bool) {
 	h.calls++

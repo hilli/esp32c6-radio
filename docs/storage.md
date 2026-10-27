@@ -1,81 +1,145 @@
-# Durable ESP32-C6 storage: unclosed gate
+# Experimental durable C6 Settings
 
-No persistent ESP32-C6 Settings backend is provided or claimed durable. The
-Thread wiring example rejects nil Settings and never substitutes RAM.
-Physical entropy validation is also required before credentials are provisioned.
+The internal-flash backend and crash-safe journal are implemented and
+software-tested. **Physical durability is NOT_RUN: the C6 board has not arrived.**
+No device has been inspected, selected, reset, flashed, erased or operated.
+Do not treat successful host tests, readback or a linked port as physical proof.
 
-## Source evidence
+## API and ownership
 
-TinyGo **0.42.0** at `bdc4a21af007d8f059b5cefe5644b7ee7bda5b2d`
-only has an Espressif flash block device in
-`src/machine/machine_esp32c3_flash.go` (`//go:build esp32c3`). Its common
-`src/machine/flash.go` build expression also excludes C6. C3's DROM translation
-is `0x3c000000`, not this module's C6 identity map at `0x42000000`; copying that
-driver unchanged would target the wrong flash offsets.
+```go
+driver, err := esp32c6radio.New()
+if err != nil { return err }
+// Check every error. Initial formatting is a separate, explicitly authorized
+// disposable-partition operation while the radio is disabled.
+store, err := settings.Open(driver)
+if err != nil { return err }
+defer store.Close()
+// For Thread, share this SAME driver:
+return threadnode.RunWithDriver(driver, store, completeLabDataset, stop, observe)
+```
 
-The source-supported route fits the existing architecture without an IDF
-runtime: a small C6-specific ROM bridge plus a pure-Go crash-safe Settings
-journal. ESP-IDF **v5.5**, commit
-`8c750b088c7cd857d079c0eeb495da199b359461`, provides these documented C6
-ROM entries in `components/esp_rom/esp32c6/ld/esp32c6.rom.ld`:
+`settings.Open` never autoformats or erases. `ErrUnformatted` means the complete
+reserved partition is erased; corruption, ambiguous commits, wrong EUI64 or
+schema and read errors are different errors. `settings.FormatEmpty(driver)`
+requires a disabled radio and an entirely erased partition. It does not erase
+corrupt credentials/counters as recovery. Only one native Store owns the
+partition at a time; the namespace is bound to the canonical factory EUI-64.
 
-| Entry | ROM address | Constraint / use |
-|---|---|---|
-| `esp_rom_spiflash_unlock` | `0x40000154` | Check its result, never assume unlock succeeded |
-| `esp_rom_spiflash_erase_sector` | `0x40000144` | Sector number; 4096-byte erase units |
-| `esp_rom_spiflash_write` | `0x4000014c` | Address, source and length word-aligned; pre-erase required |
-| `esp_rom_spiflash_read` | `0x40000150` | Address, destination and length word-aligned |
-| `esp_rom_spiflash_wait_idle` | `0x40000110` | Completion/status semantics must be honored |
-| `Cache_Invalidate_Addr` | `0x40000648` | Invalidate the affected mapped C6 range |
+`Get`, `Set`, `Add`, `Delete` and `Wipe` implement `platform.Settings`.
+`Set` replaces the whole list atomically; `Delete(key,-1)` removes all values.
+Invalid negative indices are not missing-data errors. Returned bytes are copies.
+Only genuine absence returns `platform.ErrSettingsNotFound`.
 
-Declarations and return codes are in
-`components/esp_rom/esp32c6/include/esp32c6/rom/spi_flash.h`.
-These addresses are **not C3 addresses** and are not added as speculative
-flash-call stubs to this driver.
+Limits are explicit: 16 keys, 32 total values, 512 bytes/value and 4096 bytes of
+canonical live state. Exhaustion returns an error without modifying flash.
+Generation and bank epoch are uint64; they never wrap. Wipe atomically clears
+the **whole** namespace and requires the native radio disabled. Stop/discard the
+old Instance first; provision a new disposable dataset. Reusing an old key after
+erasing counters or restoring an older flash backup is unsafe.
 
-## What a real port must establish
+## Partition and protocol
 
-1. Reserve an explicit, erase-aligned flash partition in the linker and image
-   verifier. The current target allows the whole 4 MiB for firmware and reserves
-   **no** Settings partition. Free space in today's small image is not a
-   reservation. A future two-sector minimum at the end of flash must also
-   account for image integrity/trailers and any actual boot/partition layout.
-2. Keep the flash transaction, all accessed data/literals and required return
-   path in SRAM while caches are unavailable. Prove the C6 ROM guard/cache
-   initialization requirements, not merely symbol resolution. Check unlock,
-   write, erase and completion results; bound operations to the partition,
-   including overflow, zero-length and alignment cases.
-3. Coordinate with the radio. An erase or cache-disabled write cannot let the
-   current flash-resident Go ISR execute, nor block pending-bit decisions during
-   legacy ACK turnaround. Stop/quiesce radio work or prove an IRAM-safe path.
-   Never write while an accepted TX/DMA buffer still belongs to hardware.
-4. Implement atomic durable `Set`, not in-place overwrite. An A/B or append-only
-   journal needs sequence/CRC/commit validation, recovery without rollback,
-   safe compaction, tombstones and exclusive namespace ownership. A power cut
-   may expose the old or the new complete value, never a partial success.
-5. Test simulated interruption at every program/erase/commit step, and then
-   physical cuts on the actual C6FH4 flash across writes and compaction.
-   Readback through cache alone is not evidence that a successful `Set`
-   survives power loss.
+The 4 MiB target reserves physical **`0x3f8000..0x400000`**, exactly 32 KiB,
+erase-aligned and excluded from firmware FLASH. Both linker symbols and the
+ELF/bin validator enforce real nonoverlap, image trailers and physical bounds.
+It consists of two 16 KiB banks (four 4096-byte sectors each).
 
-## Generic gothread support
+Each bank has a versioned owner/epoch/base-generation header, CRC-protected
+canonical snapshot, 128 fixed transaction descriptors and an append payload
+arena. A transaction replaces one whole setting/list; count zero is a tombstone.
+Header and payload are programmed/read back before the descriptor's independent
+commit word. No multiword program is assumed atomic.
 
-The pinned, merged gothread revision `f61a13bebcdd740ca78807149f8677f30f19658f`
-includes Settings-backed active/pending datasets, key sequence and
-reserve-before-encryption MAC/MLE counters. Use
-`inst.ActiveDataset().SaveLocalFromInfo(&info)` for fresh provisioning and check
-its error, `PersistenceError`, `Start`, `IfConfigUp` and `ThreadStart`.
-Dataset-only credentials without counter history are rejected.
-It also forwards TX channel/CCA metadata, rolls back rejected scan starts, and
-initializes the injected radio's canonical factory identity before dependent
-constructors capture it.
+Fixed descriptor positions make a corrupted committed length distinguishable
+from an unfinished tail. Exact committed records must pass header/payload CRC,
+bounds, list structure and consecutive generation checks. A partial commit word
+is ambiguous and fails closed, not a reason to return an older success.
+An unfinished uncommitted tail forces compaction rather than reuse.
 
-`Settings.Get` must distinguish absent data (`platform.ErrSettingsNotFound`)
-from I/O/corruption failures. `Set` must be atomic and durable **before returning
-success**. Never restore an older namespace snapshot, share it between live
-instances, or erase only counters while retaining credentials. MAC encryption
-stays in gothread; this driver does not advertise `CapTransmitSec`.
+Compaction writes and commits the other bank's complete new snapshot first,
+then retires the old bank, and only then acknowledges success. Retirement is
+at the **last word** of the old bank and erased last. A damaged newer
+acknowledged bank cannot silently revive a stale retired bank. Interrupted
+program/compaction can recover the old or the complete new state; ambiguous or
+corrupt outcomes stop with an error. Availability is not preferred over counter
+safety. Every uncertain mutation latches the live handle until close/reopen.
 
-The generic persistence and metadata changes were made independently in
-gothread. No user's primary working copy was edited here. Neither those host
-tests nor a linked C6 ROM port would close the physical storage gate.
+CRC protects accidental integrity, not a malicious actor replaying a complete
+valid older partition image. C6 flash alone is not a trusted monotonic counter.
+Exclusive namespace/no-rollback operation remains a platform precondition.
+
+## Native execution proof and restrictions
+
+The small ROM bridge uses ESP-IDF v5.5
+`8c750b088c7cd857d079c0eeb495da199b359461`, not C3 DROM translation.
+Its C6 ROM entries are unlock `0x40000154`, write `0x4000014c`,
+erase-sector `0x40000144`, wait-idle `0x40000110`, cache-suspend `0x40000698`,
+invalidate-all `0x4000064c` and resume `0x4000069c`.
+
+Read-only research also disassembled Espressif's official
+`esp-rom-elfs-20260528` C6 rev0 ROM ELF:
+
+- Release archive SHA256:
+  `caa463d3cbef2430a5a35847c1d9f2f152403b17a802050927ff60c8da54fe46`.
+- C6 ELF SHA256:
+  `788e1d38724aeb8fd974fa10c4a7b089c02627d35342ce84b9e0b12b239f3551`.
+- The public legacy wrappers dispatch installed function-table overrides or
+  their actual ROM fallback. The backend **rejects** nonzero overrides/OS guard
+  hooks, invalid SRAM table pointers, unsupported geometry and unknown capacity.
+  It does not replace unknown functions with no-op stubs.
+- The profile requires 4096-byte sectors, 256-byte pages, 64 KiB blocks,
+  at least the reserved 4 MiB mapping and the pinned SDK's 4 MiB JEDEC capacity
+  code `0x16`, ROM read/program sub-blocks of 16/32 bytes and supported 23/24
+  address-bit fields. An observed board/ROM profile mismatch is an explicit gate, not
+  permission to patch guard state until it appears successful.
+
+All cache-off instructions, literals, buffers and return path are SRAM/ROM.
+The actual ELF verifier decodes RV32IMC call/branch transfers, resolves
+AUIPC/JALR pairs, rejects XIP/unresolved calls and XIP relocations, and requires
+`--emit-relocs`. Disassembly exposed a real incorrect absolute-call encoding;
+ROM bindings now live in the linker, not inline assembler aliases.
+
+Programs are range/alignment checked and split at 256-byte page boundaries;
+erases are bounded to the dedicated banks. Native return statuses and completion
+are checked. Mapped reads after unified-cache invalidation avoid the documented
+C6 ECO0 ROM-read workarounds, including their otherwise unsafe dummy write.
+
+**Known native fail-stop:** audited ROM WIP/status loops are unbounded if flash
+is absent/stuck. TinyGo disables its watchdogs. This port cannot manufacture a
+software timeout while trapped inside those ROM calls with XIP suspended:
+it returns no success, and independent host observation must fail/timeout.
+A failed completion check stays in SRAM until an approved manual reset.
+This limitation is explicit and still requires physical failure testing.
+
+## Radio and runtime integration
+
+`Radio.WithFlashAccess` serializes mutation and first quiesces MAC/DMA with
+interrupts **enabled**. It prevents new TX/scan/configuration restarts, allows
+already accepted TX or automatic ACK to finish via the real IRQ, and waits only
+for hardware ownership to end. It never waits for a completion callback queued
+on the same Thread loop running `Settings.Set`. Receive is restored afterward.
+The narrow C bridge masks interrupts only after quiescence and restores cache
+before returning into Go/XIP. No FreeRTOS/IDF runtime is embedded.
+
+Scans/foreign ownership or a quiescence timeout return an explicit busy/error
+without mutation. Settings must not be used concurrently with independent
+flash writers, Wi-Fi/BLE, LP-core radio control or an altered SPI/ROM profile.
+Erase/program pauses lose RF receive opportunities; peers may retry.
+Pause count/time and program/erase/compaction statistics are observable.
+All successful Set acknowledgements follow completion, commit and readback;
+those software properties still do not prove power-loss durability.
+
+Endurance is not infinite: append avoids erase-per-reservation, but compaction
+erases four sectors and copies live state. Record actual bytes/sectors/pauses
+over the lab traffic rate. No unknown flash chip's endurance specification or
+service lifetime is invented here.
+
+## Acceptance
+
+Host tests model 1->0 word programs, sector erase, every operation boundary,
+before/after/partial errors, ambiguous commits, compaction and reboot, ownership,
+capacity, generation exhaustion and corruption. Actual public gothread frame/
+MLE builders verify dataset/counter restoration and fail-stop reservations.
+See [the runnable lab procedure](lab-procedure.md) for controlled cuts,
+independent acknowledgement witnesses and remaining physical gates.

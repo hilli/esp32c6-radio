@@ -45,6 +45,7 @@ type device interface {
 	disable() error
 	stop()
 	busy() bool
+	idle() bool
 	receive(uint8, *configuration)
 	transmit(*[33]uint32, uint8, *configuration, bool)
 	scan(uint8, uint32, *configuration)
@@ -79,10 +80,19 @@ type event struct {
 // Statistics includes loss that occurs before callbacks can consume a frame.
 // Overflow is also reported as HandleReceiveDone(nil, ErrOverflow).
 type Statistics struct {
-	ReceiveDropped     uint64
-	ReceiveInvalid     uint64
-	ReceiveUnsupported uint64
-	UnsupportedCalls   uint64
+	ReceiveDropped          uint64
+	ReceiveInvalid          uint64
+	ReceiveUnsupported      uint64
+	UnsupportedCalls        uint64
+	FlashPauses             uint64
+	FlashPauseMicroseconds  uint64
+	TransmitAccepted        uint64
+	TransmitTerminal        uint64
+	TransmitSuccess         uint64
+	TransmitNoAck           uint64
+	TransmitCCA             uint64
+	TransmitAborted         uint64
+	SecuredTransmitAttempts uint64
 }
 
 // Radio owns one C6 modem and one outstanding transmit attempt. Frames passed
@@ -119,6 +129,8 @@ type Radio struct {
 	rfEpoch                                uint32
 	entropyMu                              sync.Mutex
 	entropyLastCycle                       uint32
+	flashMu                                sync.Mutex
+	flashPaused                            bool
 }
 
 var _ radio.Radio = (*Radio)(nil)
@@ -180,6 +192,10 @@ func (d *Radio) Enable() error {
 		unlock(key)
 		return ErrInvalidState
 	}
+	if flashOwner != nil {
+		unlock(key)
+		return ErrBusy
+	}
 	if d.state != radio.StateDisabled {
 		unlock(key)
 		return nil
@@ -204,7 +220,7 @@ func (d *Radio) Enable() error {
 // Queued callbacks still drain. It is safe to call from a callback.
 func (d *Radio) Disable() error {
 	key := lock()
-	if d.transition {
+	if d.transition || d.flashPaused {
 		unlock(key)
 		return ErrBusy
 	}
@@ -243,7 +259,7 @@ func (d *Radio) Close() error {
 		unlock(key)
 		return err
 	}
-	if d.transition {
+	if d.transition || d.flashPaused {
 		unlock(key)
 		return ErrBusy
 	}
@@ -280,7 +296,7 @@ func (d *Radio) Sleep() error {
 	if d.state == radio.StateDisabled || d.transition || !d.bound {
 		return ErrInvalidState
 	}
-	if d.txPending || d.scanning || d.dev.busy() {
+	if d.txPending || d.scanning || d.dev.busy() || d.flashPaused {
 		return ErrBusy
 	}
 	d.dev.stop()
@@ -299,7 +315,7 @@ func (d *Radio) Receive(channel uint8) error {
 	if d.state == radio.StateDisabled || d.transition || !d.bound {
 		return ErrInvalidState
 	}
-	if d.txPending || d.scanning {
+	if d.txPending || d.scanning || d.flashPaused {
 		return ErrBusy
 	}
 	if d.dev.busy() {
@@ -344,13 +360,17 @@ func (d *Radio) Transmit(frame *radio.Frame) error {
 	if d.state != radio.StateReceive || d.transition || !d.bound {
 		return ErrInvalidState
 	}
-	if d.txPending || d.scanning || d.count > eventCount-2 {
+	if d.txPending || d.scanning || d.flashPaused || d.count > eventCount-2 {
 		return ErrBusy
 	}
 	if d.dev.busy() {
 		return ErrBusy
 	}
 	d.txPending, d.txEnded, d.reserved = true, false, 2
+	d.stats.TransmitAccepted++
+	if frame.PSDU[0]&8 != 0 && info.IsSecurityProcessed {
+		d.stats.SecuredTransmitAttempts++
+	}
 	d.txInfo = info
 	d.txFrame = *frame
 	d.txFrame.PSDU = d.txData[:len(frame.PSDU)]
@@ -440,7 +460,7 @@ func (d *Radio) GetRSSI() int8 {
 	return d.dev.rssi()
 }
 func (d *Radio) applyConfig() {
-	if d.state == radio.StateReceive && !d.txPending && !d.scanning && !d.transition && !d.dev.busy() {
+	if d.state == radio.StateReceive && !d.txPending && !d.scanning && !d.transition && !d.flashPaused && !d.dev.busy() {
 		d.dev.receive(d.channel, &d.cfg)
 	}
 }
@@ -457,7 +477,7 @@ func (d *Radio) EnergyScan(channel uint8, duration uint16) error {
 	if d.state == radio.StateDisabled || d.transition || !d.bound {
 		return ErrInvalidState
 	}
-	if d.txPending || d.scanning || d.count == eventCount || d.dev.busy() {
+	if d.txPending || d.scanning || d.flashPaused || d.count == eventCount || d.dev.busy() {
 		return ErrBusy
 	}
 	d.scanning = true
@@ -602,6 +622,17 @@ func (d *Radio) transmitDone(ack []byte, info radio.RxInfo, err error) {
 		return
 	}
 	d.txEnded = true
+	d.stats.TransmitTerminal++
+	switch err {
+	case nil:
+		d.stats.TransmitSuccess++
+	case ErrNoAck:
+		d.stats.TransmitNoAck++
+	case ErrChannelAccessFailure:
+		d.stats.TransmitCCA++
+	default:
+		d.stats.TransmitAborted++
+	}
 	d.reserved--
 	e := d.push(eventDone)
 	d.copyTX(e)
@@ -615,10 +646,7 @@ func (d *Radio) transmitDone(ack []byte, info radio.RxInfo, err error) {
 	if d.txInfo.RxChannelAfterTx != 0 {
 		d.channel = d.txInfo.RxChannelAfterTx
 	}
-	if d.state != radio.StateDisabled {
-		d.state = radio.StateReceive
-		d.dev.receive(d.channel, &d.cfg)
-	}
+	d.resumeReceive()
 }
 
 func (d *Radio) scanDone(rssi int8) {
@@ -629,8 +657,5 @@ func (d *Radio) scanDone(rssi int8) {
 	d.reserved--
 	e := d.push(eventScan)
 	e.rssi = rssi
-	if d.state != radio.StateDisabled {
-		d.state = radio.StateReceive
-		d.dev.receive(d.channel, &d.cfg)
-	}
+	d.resumeReceive()
 }

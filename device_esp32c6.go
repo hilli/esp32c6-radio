@@ -15,6 +15,8 @@ import (
 
 var activeDevice *c6Device
 
+func flashDeviceAvailable(d *Radio) bool { return activeDevice == nil || activeDevice.owner == d }
+
 func readMAC(offset uintptr) uint32 {
 	return (*volatile.Register32)(unsafe.Pointer(macBase + offset)).Get()
 }

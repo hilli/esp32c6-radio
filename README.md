@@ -7,9 +7,14 @@ submodules, Git LFS, `go generate`, or manual blob downloads are needed.
 
 **Software-validated, not hardware-ready.** No board has been used to verify
 PHY calibration, interrupts, RF, entropy quality, attachment, or reboot recovery.
-The [Thread wiring example](examples/thread-node) deliberately requires verified
-durable Settings; TinyGo 0.42.0 has no C6 flash driver. There is no unsafe
-RAM-settings or resettable-frame-counter fallback.
+An [experimental internal-flash Settings backend](docs/storage.md) now reserves
+32 KiB and implements a bounded crash-safe journal with a C6-specific ROM bridge.
+Its source/ELF and fault-model checks are not physical durability evidence.
+There is no unsafe RAM-settings or resettable-frame-counter fallback.
+
+[Runnable lab probes and host tools](docs/lab-procedure.md) prepare controlled
+storage cuts, entropy smoke/source review, directed RF and functional Thread
+campaigns. The board has not arrived; generated physical evidence is **NOT_RUN**.
 
 ## Toolchain and target
 
@@ -37,7 +42,8 @@ It inherits the concrete XIAO target to obtain TinyGo's required machine pin
 definitions, but does not configure XIAO board peripherals or antenna switches.
 Radio code does not use board GPIOs; do not assume the inherited I2C/SPI aliases
 match Waveshare wiring. The custom linker uses a single identity
-flash mapping and excludes ROM/bootloader SRAM workspace. Assumptions: C6,
+flash mapping, excludes ROM/bootloader SRAM workspace and reserves
+`0x3f8000..0x400000` exclusively for Settings. Assumptions: C6,
 40 MHz crystal, TinyGo's fixed 160 MHz CPU / 40 MHz APB, and 4 MiB flash.
 Applications on other C6 boards own their board pins and RF switches.
 Do not concurrently reconfigure the modem/PHY or its ADC entropy source.
@@ -54,7 +60,8 @@ The application's target JSON can be:
 {
   "inherits": ["xiao-esp32c6"],
   "build-tags": ["esp32c6_radio"],
-  "linkerscript": "esp32c6-radio.ld"
+  "linkerscript": "esp32c6-radio.ld",
+  "ldflags": ["--emit-relocs"]
 }
 ```
 
@@ -142,9 +149,16 @@ errors, selects an always-on minimal end device, and serializes startup/shutdown
 on `PostTask`. `tools/thread-link` is an explicitly non-operational link check,
 with failing storage, **never firmware to flash**.
 
-The [storage investigation](docs/storage.md) records the source-supported C6 ROM
-route and the unclosed cache/flash/power-loss gates. Until those and physical
-entropy validation pass, do not provision persistent Thread credentials.
+`examples/storage`, `examples/entropy`, `examples/rf-validation` and
+`examples/thread-validation` are explicitly scoped, command-driven firmware
+endpoints. `make probes` builds them without accessing devices. The functional
+Thread endpoint shares the real Settings/Radio and supports private first
+provisioning, reboot restoration, actual IPv6 echo and soak observations.
+
+The [storage implementation](docs/storage.md) records source/ROM/disassembly
+evidence, strict unsupported-profile rejection, flash pause/endurance limits
+and the unclosed boot/flash/power-loss gates. Until those and the physical
+entropy/source review gates pass, do not provision persistent Thread credentials.
 Encrypted traffic, bidirectional IPv6 echo, reboot recovery and the proposed
 30-minute bounded-memory soak remain unverified.
 
@@ -173,6 +187,7 @@ local module. After publishing, test normal module downloads with:
 
 ```sh
 go run ./tools/check-consumer -version=<published-commit>
+go run ./tools/check-consumer -version=<published-commit> -example=storage
 ```
 
 The checker verifies native bytes/licenses and both directly downloaded and

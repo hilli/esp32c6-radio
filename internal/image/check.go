@@ -11,10 +11,11 @@ import (
 )
 
 const (
-	flashBase = 0x42000000
-	flashSize = 4 << 20
-	ramBase   = 0x40800000
-	ramLimit  = 0x4086e610
+	flashBase     = 0x42000000
+	flashSize     = 4 << 20
+	ramBase       = 0x40800000
+	ramLimit      = 0x4086e610
+	settingsStart = 0x3f8000
 )
 
 type Report struct {
@@ -43,19 +44,31 @@ func Check(elfPath, binPath string) (Report, error) {
 			values[s.Name] = s.Value
 		}
 	}
-	for _, name := range []string{
-		"register_chipv7_phy", "bt_bb_v2_init_cmplx", "phy_printf",
-		"rtc_clk_xtal_freq_get", "_heap_start", "_heap_end", "phy_param_rom",
-	} {
+	required := []string{"_heap_start", "_heap_end"}
+	if _, flashOnly := values["c6_flash_mutate"]; !flashOnly {
+		required = append(required, "register_chipv7_phy", "bt_bb_v2_init_cmplx", "phy_printf", "rtc_clk_xtal_freq_get", "phy_param_rom")
+	}
+	for _, name := range required {
 		if _, ok := values[name]; !ok {
 			return report, fmt.Errorf("missing linked symbol %s", name)
 		}
+	}
+	for name, want := range map[string]uint64{
+		"__settings_start": flashBase + settingsStart, "__settings_end": flashBase + flashSize,
+		"__settings_phys_start": settingsStart, "__settings_phys_end": flashSize,
+	} {
+		if values[name] != want {
+			return report, fmt.Errorf("invalid/missing Settings partition symbol %s", name)
+		}
+	}
+	if err := checkFlashBridge(f, symbols); err != nil {
+		return report, err
 	}
 	heapStart, heapEnd := values["_heap_start"], values["_heap_end"]
 	if heapStart < ramBase || heapStart >= heapEnd || heapEnd != ramLimit {
 		return report, fmt.Errorf("invalid SRAM heap bounds %#x..%#x", heapStart, heapEnd)
 	}
-	if values["phy_param_rom"] < heapEnd {
+	if address, ok := values["phy_param_rom"]; ok && address < heapEnd {
 		return report, fmt.Errorf("heap overlaps PHY ROM workspace")
 	}
 	report.StaticRAM = heapStart - ramBase
@@ -77,8 +90,8 @@ func Check(elfPath, binPath string) (Report, error) {
 			if s.Addr < ramBase || s.Addr+s.Size > heapStart {
 				return report, fmt.Errorf("%s overlaps heap or ROM workspace", name)
 			}
-		} else if s.Addr < flashBase || s.Addr+s.Size > flashBase+flashSize {
-			return report, fmt.Errorf("%s exceeds the 4 MiB mapped flash", name)
+		} else if err := flashRange(s.Addr, s.Size); err != nil {
+			return report, fmt.Errorf("%s: %w", name, err)
 		}
 		data, err := s.Data()
 		if err != nil {
@@ -103,9 +116,10 @@ type segment struct {
 }
 
 func checkBinary(bin []byte, entry uint32, expected []segment) error {
-	if len(bin) < 24 || len(bin) > flashSize || bin[0] != 0xe9 {
+	if len(bin) < 24 || len(bin) > settingsStart || bin[0] != 0xe9 {
 		return fmt.Errorf("invalid ESP image header or size")
 	}
+
 	if int(bin[1]) != len(expected) {
 		return fmt.Errorf("unexpected ESP segment count %d", bin[1])
 	}
@@ -159,6 +173,13 @@ func checkBinary(bin []byte, entry uint32, expected []segment) error {
 		}
 	} else if bin[23] != 0 || len(bin) != end {
 		return fmt.Errorf("unexpected ESP image trailer")
+	}
+	return nil
+}
+
+func flashRange(address, size uint64) error {
+	if address < flashBase || address >= flashBase+settingsStart || size > flashBase+settingsStart-address {
+		return fmt.Errorf("firmware overlaps Settings partition or physical flash bound")
 	}
 	return nil
 }

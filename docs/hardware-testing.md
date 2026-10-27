@@ -4,6 +4,12 @@
 board. A successful host test, calibration call's presence in an ELF, or image
 layout check is not a successful hardware calibration, interrupt, or RF test.
 
+Start with the [ordered command-driven lab procedure](lab-procedure.md), which
+builds the current storage/entropy/RF/Thread probes and versioned NOT_RUN
+evidence. The older raw example below transmits at boot with lab defaults;
+prefer `examples/rf-validation` for explicit per-device/run/channel approval.
+No connected device may be selected or operated without separate approval.
+
 Use an RF-appropriate lab setup and locally permitted channel/power. Keep
 credentials and captures containing real network secrets out of public commits.
 Record board revision, C6 chip revision, firmware commit, toolchain versions,

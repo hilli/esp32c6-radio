@@ -69,6 +69,7 @@ func (h *c6Device) stop() {
 func (h *c6Device) busy() bool {
 	return h.sendingAck || macReg(rxStatus).Get()>>16&7 > 1 || macReg(0x88).Get()&(1<<8) != 0
 }
+func (h *c6Device) idle() bool { return macReg(0x88).Get()&0xf00 == 0 }
 
 func powerIndex(power int8) uint32 {
 	if power == 20 {
@@ -232,7 +233,7 @@ func (h *c6Device) irq(events uint32) {
 		case !h.awaitAck && !(d.txPending && !d.txEnded):
 			d.stats.ReceiveInvalid++
 			h.sendingAck = false
-			h.receive(d.channel, &d.cfg)
+			d.resumeReceive()
 			return
 		}
 	}
@@ -240,10 +241,10 @@ func (h *c6Device) irq(events uint32) {
 		psdu, _, valid := h.received()
 		if !valid {
 			d.stats.ReceiveInvalid++
-			h.receive(d.channel, &d.cfg)
+			d.resumeReceive()
 		} else if psdu[1]>>4&3 > 1 {
 			d.stats.ReceiveUnsupported++
-			h.receive(d.channel, &d.cfg)
+			d.resumeReceive()
 		} else if psdu[0]&0x20 != 0 && !h.promiscuous {
 			h.sendingAck = true
 			if d.pending(psdu) {
@@ -273,5 +274,5 @@ func (h *c6Device) deliverRX() {
 	} else {
 		h.owner.stats.ReceiveInvalid++
 	}
-	h.receive(h.owner.channel, &h.owner.cfg)
+	h.owner.resumeReceive()
 }
