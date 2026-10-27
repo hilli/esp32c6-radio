@@ -17,8 +17,8 @@ test was used.
 | Cold-cache consumer | PASS: isolated Go module/build caches, local module replacement, direct and `go mod vendor` TinyGo builds |
 | Asset preservation | PASS: all native archives, headers, linker files and licenses compare byte-for-byte after vendoring |
 | ISR allocation checks | PASS: 1000 host IRQ-path allocation probes report zero; TinyGo allocation diagnostics identify startup constructors, not the driver's IRQ/producer sites |
-| Published module download | Pending the first public implementation commit; rerun `tools/check-consumer -version=<commit>` after pushing |
-| Hosted Linux CI | Workflow supplied; local results above do not claim a hosted run has passed |
+| Published module download | PASS: normal Go download of implementation commit `68d80c25542c82df9de1911bfb023e8f35db8adc`, cold Go caches, direct and vendored TinyGo builds |
+| Hosted Linux CI | PASS: [Software gates run 40533980232](https://github.com/hilli/esp32c6-radio/actions/runs/40533980232), including `make check` and `make consumer` |
 
 The private hardware boundary tests exercise the **actual C6 IRQ state machine**
 against a fixed register model, not just a replacement Radio implementation.
@@ -61,6 +61,13 @@ consume it at runtime. TinyGo reports a 7240-byte driver object allocated at
 startup, in addition to its device, closures and channels. The link-only harness
 contains real attach/AES-CCM code but deliberately rejects storage and must
 **never be flashed** as a functional Thread node.
+
+The published-code consumer check used
+`go run ./tools/check-consumer -version=68d80c25542c82df9de1911bfb023e8f35db8adc`.
+Both downloaded-module and vendored images were 102,288 bytes with 25,472 bytes
+of static SRAM and 426,640 bytes of heap address space. All imported native
+assets and their notices survived the normal Go module zip and vendoring paths.
+Subsequent validation-report updates do not change that implementation.
 
 ## Reproducible dependencies
 
