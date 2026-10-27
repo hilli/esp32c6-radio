@@ -76,7 +76,7 @@ Bytes, as checked from the actual ELF/bin pairs:
 | Directed raw node B | 103,168 | 25,728 | 426,384 |
 | Storage campaign | 500,240 | 45,184 | 406,928 |
 | Entropy campaign | 521,184 | 50,304 | 401,808 |
-| RF campaign | 529,040 | 50,304 | 401,808 |
+| RF campaign | 529,056 | 50,304 | 401,808 |
 | Functional Thread campaign | 822,144 | 55,936 | 396,176 |
 
 These are not nRF52840 numbers. The SRAM ceiling is `0x4086e610`; the system

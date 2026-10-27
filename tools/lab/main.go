@@ -290,7 +290,7 @@ func commands(args []string) error {
 	scope := f.String("approve-scope", "", "explicit EUI64:action:run_id acknowledgement; prints commands only")
 	probe := f.String("probe", "storage", "storage, entropy, rf or thread")
 	channel := f.Uint("channel", 0, "explicit lab channel 11-26")
-	pan := f.Uint("pan", 0, "explicit disposable PAN ID")
+	pan := f.Uint("pan", 0, "explicit disposable lab PAN ID 1..65534; no default")
 	local := f.Uint("local", 0xffff, "explicit local short address")
 	peer := f.Uint("peer", 0xffff, "explicit peer short address")
 	count := f.Uint("count", 1000, "directed packet count")
@@ -334,8 +334,8 @@ func commands(args []string) error {
 	c := lab.Command{Operation: *operation, RunID: m.RunID, BootID: *boot, ExpectedEUI: m.ExpectedEUI, Confirmation: *scope,
 		Counter: *counter, DelayMillis: uint32(*delay), Channel: uint8(*channel), PanID: uint16(*pan), LocalAddress: uint16(*local), PeerAddress: uint16(*peer),
 		Count: uint32(*count), DurationSeconds: uint32(*duration), PeerIPv6: *peerIP}
-	if *probe == "rf" && *operation == "run" && (*channel < 11 || *local == *peer || *local == 65535 || *peer == 65535 || *count < 1000) {
-		return fmt.Errorf("explicit isolated RF channel and unicast addresses required")
+	if *probe == "rf" && *operation == "run" && (*channel < 11 || *pan == 0 || *pan == 65535 || *local == *peer || *local == 65535 || *peer == 65535 || *count < 1000) {
+		return fmt.Errorf("explicit isolated RF channel, nonzero non-broadcast lab PAN and unicast addresses required")
 	}
 	if *probe == "thread" && *operation == "start" {
 		c.StorageReviewArtifact, err = requirePhysicalReport(*storageEvidence, m.ExpectedEUI, "storage_safety", "storage_recovery")

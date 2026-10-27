@@ -44,6 +44,9 @@ func TestCommandsRequireExplicitScope(t *testing.T) {
 	if err := commands([]string{"-manifest", path, "-boot", "test", "-operation", "format"}); err == nil {
 		t.Fatal("destructive command emitted without scope")
 	}
+	if err := commands([]string{"-manifest", path, "-boot", "test", "-operation", "run", "-probe", "rf", "-channel", "15", "-local", "4660", "-peer", "22136", "-approve-scope", m.ExpectedEUI + ":rf:" + m.RunID}); err == nil {
+		t.Fatal("RF command silently selected a default PAN")
+	}
 	if err := commands([]string{"-manifest", path, "-boot", "test", "-operation", "start", "-probe", "thread", "-approve-scope", m.ExpectedEUI + ":thread-lab:" + m.RunID}); err == nil {
 		t.Fatal("Thread command emitted without actual storage/source evidence")
 	}

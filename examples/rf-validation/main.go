@@ -82,7 +82,7 @@ func (r *receiver) HandleTransmitDone(_ *radio.Frame, _ *radio.Frame, errorValue
 func (*receiver) HandleEnergyScanDone(int8) {}
 
 func run(d *esp32c6radio.Radio, c lab.Command) (map[string]uint64, error) {
-	if c.Channel < 11 || c.Channel > 26 || c.LocalAddress == c.PeerAddress || c.LocalAddress == 0xffff || c.PeerAddress == 0xffff || c.Count < 1000 || c.Count > 10000 {
+	if c.Channel < 11 || c.Channel > 26 || c.PanID == 0 || c.PanID == 0xffff || c.LocalAddress == c.PeerAddress || c.LocalAddress == 0xffff || c.PeerAddress == 0xffff || c.Count < 1000 || c.Count > 10000 {
 		return nil, esp32c6radio.ErrInvalidArgument
 	}
 	r := &receiver{done: make(chan struct{}, 1), receivedAll: make(chan struct{}), peer: c.PeerAddress, target: c.Count}

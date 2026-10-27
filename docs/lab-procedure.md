@@ -149,6 +149,9 @@ Build `-probe rf-validation` for both known devices with the SAME host-generated
 `-run-id` and their own `-expected-eui`. Supply channel, PAN and distinct local/
 peer short addresses explicitly. Arm `EUI:rf:RUN_ID`, then send run commands to
 both within the receive window. No packets are sent before that command.
+The lab endpoint requires PAN 1..65534 (zero/broadcast are rejected, not hidden
+defaults) and uses the documented fixed 0 dBm TX power. This lab restriction
+does not change the radio driver's general PAN support.
 
 Each direction requires 1000 accepted unicast attempts, exactly matching
 started/terminal counts and reconciled success/noACK/CCA/abort counts. Frames
