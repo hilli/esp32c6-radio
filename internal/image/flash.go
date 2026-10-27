@@ -4,6 +4,7 @@ import (
 	"debug/elf"
 	"encoding/binary"
 	"fmt"
+	"strings"
 )
 
 func executableMemory(address uint64) bool {
@@ -13,7 +14,7 @@ func executableMemory(address uint64) bool {
 func checkFlashBridge(f *elf.File, symbols []elf.Symbol) error {
 	var functions []elf.Symbol
 	for _, s := range symbols {
-		if s.Name == "c6_flash_mutate" || s.Name == "c6_flash_ready" || s.Name == "ram_range" || s.Name == "c6_flash_device_id" {
+		if strings.HasPrefix(s.Name, "c6_flash_") || strings.HasPrefix(s.Name, "c6_shared_v2_flash_") || s.Name == "ram_range" {
 			if s.Section == elf.SHN_UNDEF {
 				continue
 			}
@@ -28,7 +29,7 @@ func checkFlashBridge(f *elf.File, symbols []elf.Symbol) error {
 	}
 	foundEntry := false
 	for _, fn := range functions {
-		if fn.Name == "c6_flash_mutate" {
+		if fn.Name == "c6_flash_mutate" || fn.Name == "c6_shared_v2_flash_mutate" {
 			foundEntry = true
 		}
 	}
@@ -45,7 +46,7 @@ func checkFlashBridge(f *elf.File, symbols []elf.Symbol) error {
 			return err
 		}
 		code := data[fn.Value-sec.Addr : fn.Value-sec.Addr+fn.Size]
-		if err := checkRVControl(code, fn.Value); err != nil {
+		if err := checkRVControlClosure(code, fn.Value, functions); err != nil {
 			return fmt.Errorf("%s: %w", fn.Name, err)
 		}
 	}
@@ -96,6 +97,26 @@ func target(pc uint64, offset int64) error {
 // Decode actual RV32IMC direct control transfers. Unknown indirect transfers
 // fail closed; returns are allowed, and AUIPC/JALR call pairs are resolved.
 func checkRVControl(code []byte, base uint64) error {
+	return checkRVControlClosure(code, base, nil)
+}
+
+func closedTarget(pc uint64, offset int64, functions []elf.Symbol) error {
+	if err := target(pc, offset); err != nil {
+		return err
+	}
+	address := uint64(int64(pc) + offset)
+	if functions == nil || address < ramBase {
+		return nil
+	}
+	for _, fn := range functions {
+		if address >= fn.Value && address < fn.Value+fn.Size {
+			return nil
+		}
+	}
+	return fmt.Errorf("cache-off transfer to unverified SRAM helper %#x", address)
+}
+
+func checkRVControlClosure(code []byte, base uint64, functions []elf.Symbol) error {
 	var previous uint32
 	var previousPC uint64
 	for off := 0; off < len(code); {
@@ -108,8 +129,14 @@ func checkRVControl(code []byte, base uint64) error {
 			funct := half >> 13
 			if half&3 == 1 && (funct == 1 || funct == 5) {
 				imm := uint32((half>>12&1)<<11 | (half>>11&1)<<4 | (half>>9&3)<<8 | (half>>8&1)<<10 | (half>>7&1)<<6 | (half>>6&1)<<7 | (half>>3&7)<<1 | (half>>2&1)<<5)
-				if err := target(pc, signed(imm, 12)); err != nil {
+				if err := closedTarget(pc, signed(imm, 12), functions); err != nil {
 					return err
+				}
+				if half&3 == 1 && (funct == 6 || funct == 7) {
+					imm := uint32((half>>12&1)<<8 | (half>>10&3)<<3 | (half>>5&3)<<6 | (half>>3&3)<<1 | (half>>2&1)<<5)
+					if err := closedTarget(pc, signed(imm, 9), functions); err != nil {
+						return err
+					}
 				}
 			}
 			if half&0xf07f == 0x8002 || half&0xf07f == 0x9002 {
@@ -129,13 +156,13 @@ func checkRVControl(code []byte, base uint64) error {
 		op := word & 0x7f
 		if op == 0x6f {
 			imm := (word>>31)<<20 | (word>>12&255)<<12 | (word>>20&1)<<11 | (word>>21&1023)<<1
-			if err := target(pc, signed(imm, 21)); err != nil {
+			if err := closedTarget(pc, signed(imm, 21), functions); err != nil {
 				return err
 			}
 		}
 		if op == 0x63 {
 			imm := (word>>31)<<12 | (word>>7&1)<<11 | (word>>25&63)<<5 | (word>>8&15)<<1
-			if err := target(pc, signed(imm, 13)); err != nil {
+			if err := closedTarget(pc, signed(imm, 13), functions); err != nil {
 				return err
 			}
 		}
@@ -147,7 +174,7 @@ func checkRVControl(code []byte, base uint64) error {
 				}
 				high := int64(int32(previous & 0xfffff000))
 				low := signed(word>>20, 12)
-				if err := target(previousPC, high+low); err != nil {
+				if err := closedTarget(previousPC, high+low, functions); err != nil {
 					return err
 				}
 			}
