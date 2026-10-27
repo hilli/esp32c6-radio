@@ -1,0 +1,5 @@
+{
+  "inherits": ["xiao-esp32c6"],
+  "build-tags": ["esp32c6_radio"],
+  "linkerscript": "esp32c6-radio.ld"
+}

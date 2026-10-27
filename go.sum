@@ -1,0 +1,4 @@
+github.com/hilli/gothread v0.0.0-20261027151759-f61a13bebcdd h1:IT4eHlTI95gLQxRM4tl/N551ZLwYzZ4gshk9xmKQ8QY=
+github.com/hilli/gothread v0.0.0-20261027151759-f61a13bebcdd/go.mod h1:NuTwsfOLsh/R8dspO6vbcA6yRCSoNczTexmArztPbqk=
+golang.org/x/sys v0.47.0 h1:o7XGOvZQCADBQQ4Y7VNq2dRWQR7JmOUW8Kxx4ZsNgWs=
+golang.org/x/sys v0.47.0/go.mod h1:4GL1E5IUh+htKOUEOaiffhrAeqysfVGipDYzABqnCmw=

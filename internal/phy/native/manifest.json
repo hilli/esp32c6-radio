@@ -1,0 +1,41 @@
+{
+  "esp_idf_revision": "8c750b088c7cd857d079c0eeb495da199b359461",
+  "esp_phy_lib_revision": "f6746ceea821b3800e8700d7e535f5df7304b8e5",
+  "files": [
+    {
+      "name": "LICENSE-TINYGO",
+      "url": "https://raw.githubusercontent.com/tinygo-org/tinygo/bdc4a21af007d8f059b5cefe5644b7ee7bda5b2d/LICENSE",
+      "sha256": "4cb7d99a97ebd57584ea8398898c4b0bbbcb39662330712b43153efdad308766"
+    },
+    {
+      "name": "libphy.a",
+      "url": "https://raw.githubusercontent.com/espressif/esp-phy-lib/f6746ceea821b3800e8700d7e535f5df7304b8e5/esp32c6/libphy.a",
+      "sha256": "69f633e6aec9c556055323063a1b46836a1d2626c4c10d0f55377af9f9b68fbf"
+    },
+    {
+      "name": "libbtbb.a",
+      "url": "https://raw.githubusercontent.com/espressif/esp-phy-lib/f6746ceea821b3800e8700d7e535f5df7304b8e5/esp32c6/libbtbb.a",
+      "sha256": "a689b00d3d3e010884fbe0a90637d681f45a63421a8bd71cb0ec48c91ec99c48"
+    },
+    {
+      "name": "LICENSE",
+      "url": "https://raw.githubusercontent.com/espressif/esp-phy-lib/f6746ceea821b3800e8700d7e535f5df7304b8e5/LICENSE",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "name": "esp_phy_init.h",
+      "url": "https://raw.githubusercontent.com/espressif/esp-idf/8c750b088c7cd857d079c0eeb495da199b359461/components/esp_phy/include/esp_phy_init.h",
+      "sha256": "c872f340de7a88f306d8bca90697b03f86834c956ab13b1b3893294e12cf95f9"
+    },
+    {
+      "name": "esp_private_phy.h",
+      "url": "https://raw.githubusercontent.com/espressif/esp-idf/8c750b088c7cd857d079c0eeb495da199b359461/components/esp_phy/include/esp_private/phy.h",
+      "sha256": "5bf3772d1da84eb00ee2503aa7cdc47d6660fcaadddc63e7344121dbcf197ae3"
+    },
+    {
+      "name": "esp32c6.rom.phy.ld",
+      "url": "https://raw.githubusercontent.com/espressif/esp-idf/8c750b088c7cd857d079c0eeb495da199b359461/components/esp_rom/esp32c6/ld/esp32c6.rom.phy.ld",
+      "sha256": "7332fd77b2aeb34d5d9881e86e26a7521f2b315b3ad4116082f92eb1b6a19f35"
+    }
+  ]
+}
