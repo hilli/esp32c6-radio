@@ -1,0 +1,23 @@
+// Negative link-proof fixture: runtime.KeepAlive does not root all executable
+// API bodies through native linker garbage collection. Never flash this image.
+package main
+
+import (
+	"runtime"
+	"github.com/hilli/esp32c6-radio/settings"
+)
+
+var paths=[...]any{
+	settings.Open,settings.FormatEmpty,settings.OpenSharedV2,settings.FormatEmptySharedV2,
+	(*settings.SharedV2).Close,(*settings.SharedV2).ThreadSettings,(*settings.SharedV2).MatterBlobs,
+	(*settings.SharedThreadSettings).Get,(*settings.SharedThreadSettings).Set,
+	(*settings.SharedThreadSettings).Add,(*settings.SharedThreadSettings).Delete,(*settings.SharedThreadSettings).Wipe,
+	(*settings.SharedMatterBlobs).Get,(*settings.SharedMatterBlobs).Set,
+	(*settings.SharedMatterBlobs).Delete,(*settings.SharedMatterBlobs).Keys,(*settings.SharedMatterBlobs).Close,
+}
+
+func main() {
+	println("NEGATIVE LINK ONLY; physical NOT_RUN")
+	runtime.KeepAlive(paths)
+	select {}
+}

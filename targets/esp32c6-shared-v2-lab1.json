@@ -1,0 +1,6 @@
+{
+  "inherits": ["xiao-esp32c6"],
+  "build-tags": ["esp32c6_radio", "c6_shared_v2_lab1"],
+  "linkerscript": "esp32c6-shared-v2-lab1.ld",
+  "ldflags": ["--emit-relocs"]
+}

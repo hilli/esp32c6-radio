@@ -25,7 +25,21 @@ type Report struct {
 }
 
 func Check(elfPath, binPath string) (Report, error) {
+	return checkProfile(elfPath, binPath, storeSchema1)
+}
+
+// CheckSharedV2 admits only the closed experimental layout. The default Check
+// remains schema1-only; neither entrypoint accepts an arbitrary flash range.
+func CheckSharedV2(elfPath, binPath string) (Report, error) {
+	return checkProfile(elfPath, binPath, storeSharedV2)
+}
+
+func checkProfile(elfPath, binPath string, profile storeProfile) (Report, error) {
 	var report Report
+	start, err := profileStart(profile)
+	if err != nil {
+		return report, err
+	}
 	f, err := elf.Open(elfPath)
 	if err != nil {
 		return report, err
@@ -45,7 +59,16 @@ func Check(elfPath, binPath string) (Report, error) {
 		}
 	}
 	required := []string{"_heap_start", "_heap_end"}
-	if _, flashOnly := values["c6_flash_mutate"]; !flashOnly {
+	_, legacyMutation := values["c6_flash_mutate"]
+	_, sharedMutation := values["c6_shared_v2_flash_mutate"]
+	if profile == storeSharedV2 {
+		for _, name := range []string{"c6_shared_v2_flash_ready", "c6_shared_v2_flash_mutate", "c6_flash_profile_start", "c6_flash_profile_ready", "c6_flash_profile_mutate", "ram_range"} {
+			if _, ok := values[name]; !ok {
+				return report, fmt.Errorf("missing actual shared bridge symbol %s", name)
+			}
+		}
+	}
+	if !legacyMutation && !sharedMutation {
 		required = append(required, "register_chipv7_phy", "bt_bb_v2_init_cmplx", "phy_printf", "rtc_clk_xtal_freq_get", "phy_param_rom")
 	}
 	for _, name := range required {
@@ -53,13 +76,8 @@ func Check(elfPath, binPath string) (Report, error) {
 			return report, fmt.Errorf("missing linked symbol %s", name)
 		}
 	}
-	for name, want := range map[string]uint64{
-		"__settings_start": flashBase + settingsStart, "__settings_end": flashBase + flashSize,
-		"__settings_phys_start": settingsStart, "__settings_phys_end": flashSize,
-	} {
-		if values[name] != want {
-			return report, fmt.Errorf("invalid/missing Settings partition symbol %s", name)
-		}
+	if err := checkProfileSymbols(values, profile); err != nil {
+		return report, err
 	}
 	if err := checkFlashBridge(f, symbols); err != nil {
 		return report, err
@@ -90,7 +108,7 @@ func Check(elfPath, binPath string) (Report, error) {
 			if s.Addr < ramBase || s.Addr+s.Size > heapStart {
 				return report, fmt.Errorf("%s overlaps heap or ROM workspace", name)
 			}
-		} else if err := flashRange(s.Addr, s.Size); err != nil {
+		} else if err := flashRangeTo(s.Addr, s.Size, start); err != nil {
 			return report, fmt.Errorf("%s: %w", name, err)
 		}
 		data, err := s.Data()
@@ -103,7 +121,7 @@ func Check(elfPath, binPath string) (Report, error) {
 	if err != nil {
 		return report, err
 	}
-	if err := checkBinary(bin, uint32(f.Entry), segments); err != nil {
+	if err := checkBinaryTo(bin, uint32(f.Entry), segments, int(start)); err != nil {
 		return report, err
 	}
 	report.FlashBytes = uint64(len(bin))
@@ -116,7 +134,11 @@ type segment struct {
 }
 
 func checkBinary(bin []byte, entry uint32, expected []segment) error {
-	if len(bin) < 24 || len(bin) > settingsStart || bin[0] != 0xe9 {
+	return checkBinaryTo(bin, entry, expected, settingsStart)
+}
+
+func checkBinaryTo(bin []byte, entry uint32, expected []segment, limit int) error {
+	if len(bin) < 24 || len(bin) > limit || bin[0] != 0xe9 {
 		return fmt.Errorf("invalid ESP image header or size")
 	}
 
@@ -178,7 +200,11 @@ func checkBinary(bin []byte, entry uint32, expected []segment) error {
 }
 
 func flashRange(address, size uint64) error {
-	if address < flashBase || address >= flashBase+settingsStart || size > flashBase+settingsStart-address {
+	return flashRangeTo(address, size, settingsStart)
+}
+
+func flashRangeTo(address, size, start uint64) error {
+	if address < flashBase || address >= flashBase+start || size > flashBase+start-address {
 		return fmt.Errorf("firmware overlaps Settings partition or physical flash bound")
 	}
 	return nil
