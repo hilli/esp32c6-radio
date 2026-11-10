@@ -1,0 +1,32 @@
+{
+  "build_tag": "c6_owned_entry",
+  "contract": "C6-only optional copied-source overlay; unchanged Task/state layout, no installed/default-host runtime edit",
+  "patch_sha256": "007d8b8097a5afd6bb50782380d66a06556034f71e083a4ce0981a84ec55c871",
+  "source_changes": {
+    "src/internal/task/task_owned_esp32c6.go": {
+      "original_sha256": null,
+      "overlay_sha256": "efe1e8d1888eecede27c38faf138db13b883659616ecf62779965e3b7a3b9163"
+    },
+    "src/runtime/interrupt/interrupt_esp32c6.go": {
+      "original_sha256": "199fb198e08a14c73d9f1d2378eb2eedd32e24bf85e0414179b89ee3b45b092d",
+      "overlay_sha256": "74efa12adabfe1350034828dd15186ad70d96e99745db5dd836c808b0fc16289"
+    },
+    "src/runtime/interrupt/interrupt_esp32c6_owned.go": {
+      "original_sha256": null,
+      "overlay_sha256": "4625f0e493ed54630f8a01a3c2ff23d4c47bd082aa6312d42cdd51f622c8ee07"
+    }
+  },
+  "sources": {
+    "src/device/riscv/handleinterrupt.S": "6eee1f965982fd4f249d7cdf1150e42254f5c81be0475ac2bccf2a18365621a8",
+    "src/internal/task/task.go": "e3ef4a1d348c5d357fe16f9541e50da1ab1ece893f1dc721a738a5a29f373191",
+    "src/internal/task/task_stack.go": "4d5e3b4dc7e9d3a5046ffe367f4c44472e45f42810b26d26e2d1969ee76dd31d",
+    "src/internal/task/task_stack_tinygoriscv.S": "734f4db904e31c7e141c1006e305a2accc9eac681f03514b9e2cce760b270103",
+    "src/internal/task/task_stack_tinygoriscv.go": "5286be79c635895ceb5f68d08d422656191f29df5eba10ddb72bf1d42e0e3233",
+    "src/internal/task/task_stack_unicore.go": "e89c797a48729a4530156fce8460ad93ebbcc48f89941f851f277d586cc3fdc8",
+    "src/runtime/interrupt/interrupt_esp32c6.go": "199fb198e08a14c73d9f1d2378eb2eedd32e24bf85e0414179b89ee3b45b092d",
+    "src/runtime/interrupt/interrupt_tinygoriscv.go": "4fdf0f475b62463360d80f49d1bc23d61c9b777ad4239d1b681888cc9e518cd9",
+    "src/runtime/scheduler_cooperative.go": "d45b52a4a305226c9f2b1b50ecbc664cdfdf6266c55fcce04d1d44305b8299a8",
+    "src/runtime/scheduler_tasks.go": "502d7a57c96492a9cc1dc9faa98b063967bdf99fdec1f19c6a00b7814637ca4f"
+  },
+  "tinygo": "0.44.0"
+}

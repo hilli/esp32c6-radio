@@ -1,0 +1,4 @@
+{
+  "inherits": ["xiao-esp32c6"],
+  "ldflags": ["--emit-relocs", "--threads=2", "--thinlto-jobs=2"]
+}

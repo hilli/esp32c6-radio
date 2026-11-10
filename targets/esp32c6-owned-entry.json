@@ -1,0 +1,5 @@
+{
+  "inherits": ["xiao-esp32c6"],
+  "build-tags": ["c6_owned_entry"],
+  "ldflags": ["--emit-relocs", "--threads=2", "--thinlto-jobs=2"]
+}

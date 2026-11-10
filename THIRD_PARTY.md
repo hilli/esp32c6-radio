@@ -18,6 +18,17 @@ Apache-2.0. Generated weak ROM address declarations retain Espressif's notice.
 `internal/phy/native/esp32c6-radio.ld` adapts TinyGo's linker layout and changes
 the flash map, SRAM boundary, section coverage/alignment and stack reservation.
 
+The selected C6 NPL generic public declaration header is retained byte-for-byte
+at `internal/nplevent/publicabi/nimble_npl.h`, with its Apache-2.0 notice and
+`header.sha256`. The retained Apache license is `internal/phy/native/LICENSE`.
+Its accompanying OS header is this module's TinyGo event port, not a FreeRTOS
+backend or imported controller implementation.
+
+The optional owned-entry profile includes a narrowly pinned TinyGo 0.44.0
+runtime source patch and source checks in `internal/nplevent/owned/runtime`.
+It is BSD-3-Clause (license at `internal/phy/native/LICENSE-TINYGO`), applied
+only in a private source copy, never to an installed/default runtime.
+
 The Espressif archives are ordinary ar archives committed to Git and carried by
 Go module zips and vendoring. They are not LFS pointers, separately downloaded
 consumer blobs, or part of gothread. No `esp-coex-lib`, RF test library, Wi-Fi

@@ -16,6 +16,20 @@ There is no unsafe RAM-settings or resettable-frame-counter fallback.
 storage cuts, entropy smoke/source review, directed RF and functional Thread
 campaigns. The board has not arrived; generated physical evidence is **NOT_RUN**.
 
+## Experimental native event services
+
+The module also contains [bounded native-platform services](docs/native-event-services.md):
+nonblocking Go events, a private C callback bridge, the real public NPL event
+ABI, and explicitly opt-in Go-owned C-to-Go return/yield. These are implemented
+and HOST-tested; minimal C6 images have been compile/link checked, not executed.
+They do **not** provide a usable Bluetooth controller, BLE commissioning backend,
+radio coexistence, native task scheduler or Apple Home pairing.
+
+The ordinary radio toolchain pin below is unchanged. The separate compile-only
+event examples use TinyGo 0.44.0; owned entry additionally requires the pinned
+private runtime source preparation documented in that guide. No installed
+runtime or application admission guard is silently changed.
+
 ## Toolchain and target
 
 Validated with **Go 1.27.3 and TinyGo 0.42.0**. `mise.toml` pins TinyGo:
